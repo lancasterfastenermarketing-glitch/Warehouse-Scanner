@@ -1,0 +1,2 @@
+# Warehouse-Scanner
+Barcode verification
