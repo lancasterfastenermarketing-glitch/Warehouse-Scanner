@@ -1,0 +1,315 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#071957">
+<title>Lancaster Fastener - Barcode Verification</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root {
+  --navy: #071957;
+  --navy2: #102b70;
+  --page: #f3f5f9;
+  --green: #08752a;
+  --green-bg: #d9f8e2;
+  --red: #b42318;
+  --red-bg: #ffe0e0;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 22px 14px;
+  background: var(--page);
+  color: #17202a;
+}
+main {
+  max-width: 460px;
+  margin: 12px auto;
+  background: white;
+  padding: 24px;
+  border-radius: 18px;
+  text-align: center;
+  box-shadow: 0 5px 24px #07195718;
+  border-top: 6px solid var(--navy);
+}
+.logo {
+  display: block;
+  width: 112px;
+  max-height: 140px;
+  object-fit: contain;
+  margin: 0 auto 14px;
+}
+h1 { color: var(--navy); margin: 0 0 8px; font-size: 27px; }
+.subtitle { color: #667085; margin: 0 0 20px; font-size: 14px; }
+#instruction { font-weight: bold; color: var(--navy); }
+.value {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  padding: 13px;
+  background: #f3f5f9;
+  border: 1px solid #e1e6ef;
+  border-radius: 9px;
+  margin: 8px 0 18px;
+  min-height: 48px;
+}
+.field-label {
+  text-align: left;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--navy);
+  margin: 14px 0 0;
+}
+button {
+  width: 100%;
+  padding: 15px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--navy);
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+button:hover { background: var(--navy2); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.secondary {
+  background: white;
+  color: var(--navy);
+  border: 2px solid var(--navy);
+}
+#reader { width: 100%; margin-top: 16px; overflow: hidden; border-radius: 10px; }
+#result {
+  margin-top: 18px;
+  padding: 22px 8px;
+  border-radius: 12px;
+  font-size: 27px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+.match { background: var(--green-bg); color: var(--green); }
+.different { background: var(--red-bg); color: var(--red); }
+.hidden { display: none !important; }
+.hint { color: #667085; font-size: 13px; line-height: 1.45; margin-bottom: 0; }
+footer { margin-top: 18px; color: #98a2b3; font-size: 11px; }
+</style>
+</head>
+<body>
+<main>
+  <!-- Keep your existing logo image here if required -->
+  <h1>Lancaster Fastener</h1>
+  <p class="subtitle">Barcode verification scanner</p>
+
+  <p id="instruction">Press the button to scan the first barcode.</p>
+
+  <div id="reader"></div>
+
+  <button id="scan">Scan First Barcode</button>
+  <button id="capture" class="hidden">Capture Barcode</button>
+  <button id="cancel" class="secondary hidden">Cancel Scan</button>
+
+  <p class="field-label">BARCODE 1</p>
+  <div class="value" id="first">Not scanned</div>
+
+  <p class="field-label">BARCODE 2</p>
+  <div class="value" id="second">Not scanned</div>
+
+  <div id="result" class="hidden" role="status" aria-live="polite"></div>
+
+  <p class="hint" id="hint">
+    Press Scan, position the barcode in the camera view,
+    then press Capture Barcode to confirm it.
+  </p>
+
+  <button id="again" class="secondary hidden">Start Again</button>
+  <footer>Barcode verification</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let scanner = null;
+let firstCode = null;
+let secondCode = null;
+let detectedCode = null;
+let busy = false;
+
+async function stopScanner() {
+  if (scanner) {
+    try {
+      if (scanner.isScanning) await scanner.stop();
+    } catch (e) {}
+
+    try {
+      await scanner.clear();
+    } catch (e) {}
+
+    scanner = null;
+  }
+
+  $("reader").innerHTML = "";
+}
+
+async function startScan() {
+  if (busy) return;
+
+  if (typeof Html5Qrcode === "undefined") {
+    $("instruction").textContent =
+      "Scanner library could not load. Check your internet connection.";
+    return;
+  }
+
+  busy = true;
+  detectedCode = null;
+
+  $("scan").disabled = true;
+  $("capture").classList.add("hidden");
+  $("cancel").classList.remove("hidden");
+  $("instruction").textContent =
+    firstCode === null
+      ? "Point the camera at barcode 1."
+      : "Point the camera at barcode 2.";
+
+  try {
+    scanner = new Html5Qrcode("reader");
+
+    await scanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 12,
+        qrbox: (width, height) => ({
+          width: Math.max(180, Math.min(Math.floor(width * 0.9), 350)),
+          height: Math.max(90, Math.min(Math.floor(height * 0.35), 160))
+        }),
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
+      decodedText => {
+        // Detect the barcode but do NOT save it automatically.
+        if (!busy || detectedCode !== null) return;
+
+        detectedCode = decodedText;
+        $("instruction").textContent =
+          "Barcode recognised. Press Capture Barcode to confirm.";
+        $("capture").classList.remove("hidden");
+        $("hint").textContent =
+          "Check that the correct barcode is in view, then press Capture Barcode.";
+      },
+      () => {}
+    );
+
+  } catch (err) {
+    await stopScanner();
+    busy = false;
+    $("scan").disabled = false;
+    $("cancel").classList.add("hidden");
+    $("instruction").textContent =
+      "Camera unavailable. Allow camera access and try again.";
+    $("hint").textContent =
+      "Open this page over HTTPS and allow camera permission.";
+  }
+}
+
+async function captureBarcode() {
+  if (!busy || detectedCode === null) {
+    $("instruction").textContent =
+      "Wait until a barcode is recognised before capturing.";
+    return;
+  }
+
+  const captured = detectedCode;
+  busy = false;
+
+  await stopScanner();
+
+  $("capture").classList.add("hidden");
+  $("cancel").classList.add("hidden");
+
+  if (firstCode === null) {
+    firstCode = captured;
+    $("first").textContent = firstCode;
+    $("instruction").textContent =
+      "Barcode 1 saved. Press the button to scan barcode 2.";
+    $("scan").textContent = "Scan Second Barcode";
+    $("hint").textContent =
+      "Scan the second barcode and press Capture Barcode when recognised.";
+    $("scan").disabled = false;
+  } else {
+    secondCode = captured;
+    $("second").textContent = secondCode;
+    $("scan").classList.add("hidden");
+    $("again").classList.remove("hidden");
+
+    const same = firstCode === secondCode;
+
+    $("instruction").textContent = "Comparison complete.";
+    $("result").textContent = same ? "✓ MATCH" : "✕ NO MATCH";
+    $("result").className = same ? "match" : "different";
+    $("hint").textContent = same
+      ? "Both barcode values are identical."
+      : "The barcode values are different.";
+  }
+}
+
+$("scan").addEventListener("click", startScan);
+$("capture").addEventListener("click", captureBarcode);
+
+$("cancel").addEventListener("click", async () => {
+  busy = false;
+  detectedCode = null;
+  await stopScanner();
+
+  $("capture").classList.add("hidden");
+  $("cancel").classList.add("hidden");
+  $("scan").disabled = false;
+
+  $("instruction").textContent = firstCode === null
+    ? "Press the button to scan the first barcode."
+    : "Barcode 1 saved. Press the button to scan barcode 2.";
+
+  $("hint").textContent = "Press Scan to reopen the camera.";
+});
+
+$("again").addEventListener("click", async () => {
+  busy = false;
+  await stopScanner();
+
+  firstCode = null;
+  secondCode = null;
+  detectedCode = null;
+
+  $("first").textContent = "Not scanned";
+  $("second").textContent = "Not scanned";
+  $("result").className = "hidden";
+  $("result").textContent = "";
+
+  $("instruction").textContent =
+    "Press the button to scan the first barcode.";
+  $("hint").textContent =
+    "Point the camera at each barcode, then press Capture Barcode.";
+
+  $("scan").textContent = "Scan First Barcode";
+  $("scan").classList.remove("hidden");
+  $("scan").disabled = false;
+  $("again").classList.add("hidden");
+  $("capture").classList.add("hidden");
+  $("cancel").classList.add("hidden");
+});
+
+window.addEventListener("beforeunload", () => {
+  if (scanner && scanner.isScanning) scanner.stop();
+});
+</script>
+</body>
+</html>
